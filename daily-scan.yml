@@ -1,0 +1,49 @@
+name: Daglig investeringsscanner
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Kl. 22:47 UTC mandag-fredag, efter de normale amerikanske børsluk.
+    # GitHub kan forsinke eller springe planlagte kørsler over.
+    - cron: '47 22 * * 1-5'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: investeringsscanner
+  cancel-in-progress: false
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Hent projektet
+        uses: actions/checkout@v4
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Installer afhængigheder
+        run: pip install -r requirements.txt
+      - name: Test beregningsmotoren offline
+        run: python -m unittest discover -s tests -v
+      - name: Scan virkelige aktier (ingen rigtige handler)
+        env:
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          KIMI_MODEL: ${{ vars.KIMI_MODEL }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          GROK_MODEL: ${{ vars.GROK_MODEL }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+        run: python main.py
+      - name: Gem rapport til download
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aktiescanner-rapport
+          path: output/
+          if-no-files-found: warn
+          retention-days: 14
